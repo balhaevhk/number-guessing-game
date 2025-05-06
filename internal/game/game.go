@@ -7,24 +7,31 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/fatih/color"
 )
+
+var green = color.New(color.FgGreen).SprintFunc()
+var yellow = color.New(color.FgYellow).SprintFunc()
+var red = color.New(color.FgRed).SprintFunc()
 
 type GameResult struct {
 	Level        string    `json:"level"`
 	MaxNumber    int       `json:"maxNumber"`
 	AttemptsUsed int       `json:"attemptsUsed"`
 	Win          bool      `json:"win"`
-	Timestamp    string `json:"timestamp"`
+	Timestamp    string 	 `json:"timestamp"`
 }
 
 // начало игры
 func StartGame() (random int, attempts int, levelGame string) {
 	fmt.Println("Вы начали игру \"Угадай число\"")
 	fmt.Println("Для начала выберите номер уровеня:")
-	fmt.Println("1 - easy; 2 - medium; 3 - hard")
+	fmt.Println(green("1 - easy; ", yellow("2 - medium; "), red("3 - hard")))
 
 	reader := bufio.NewReader(os.Stdin)
 	var number int
@@ -43,7 +50,7 @@ func StartGame() (random int, attempts int, levelGame string) {
 		if err != nil {
 			fmt.Println("Ошибка:", err)
 			fmt.Println("Введите один из предложенных уровней")
-			fmt.Println("1 - easy; 2 - medium; 3 - hard")
+			fmt.Println(green("1 - easy; ", yellow("2 - medium; "), red("3 - hard")))
 			continue
 		}
 		break
@@ -62,13 +69,16 @@ func Game(randomNumber int, attempts int) (bool, int) {
 	reader := bufio.NewReader(os.Stdin)
 	var attUsed int
 	for attUsed = 1; attempts > 0; attUsed++ {
-		fmt.Print("Введите ваше число: ")
+		fmt.Print(yellow("Введите ваше число: "))
 		input, _ := reader.ReadString('\n')
 		input = strings.TrimSpace(input)
 		s := strings.ReplaceAll(input, " ", "")
 		guess, err := strconv.Atoi(s)
 		if err != nil {
 			fmt.Println("Вы ввели не число. Повторите")
+			continue
+		} else if (guess > randomNumber) {
+			fmt.Println("Вы ввели число больше максимального")
 			continue
 		}
 		listAttempts = append(listAttempts, guess)
@@ -81,7 +91,7 @@ func Game(randomNumber int, attempts int) (bool, int) {
 			fmt.Println(LastAppempts(listAttempts))
 			Tips(random, guess)
 		} else {
-			fmt.Println("Вы угадали!🙌")
+			fmt.Println(green("Вы угадали!🙌"))
 			return true, attUsed
 		}
 		attempts--
@@ -90,7 +100,7 @@ func Game(randomNumber int, attempts int) (bool, int) {
 		}
 		if attempts == 0 {
 			fmt.Println("Попытки закончились")
-			fmt.Println("Вы проиграли!😢")
+			fmt.Println(red("Вы проиграли!😢"))
 			fmt.Println("А правильный ответ был", random)
 			return false, attUsed
 		}
@@ -123,7 +133,6 @@ func LastAppempts(attempts []int) string {
 	result := strings.Join(s, ", ")
 	return fmt.Sprintf("Ранее вы ввели %s", result)
 }
-
 
 // сложность игры
 func Complexity(level int) (random int, attempts int, levelGame string,  err error) {
@@ -169,14 +178,19 @@ func GameAgain() (start bool) {
 
 // сохранение результата
 func SaveResult(result GameResult) error {
-	const filePath = "../../storage/results.json"
+	// Получаем текущую рабочую директорию (ту, откуда запущена программа)
+	wd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("не удалось получить текущую директорию: %w", err)
+	}
+
+	// Собираем путь к results.json
+	filePath := filepath.Join(wd, "../../storage", "results.json")
 
 	var results []GameResult
 
-	// Проверка, существует ли файл и чтение старых данных
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		// Если файл не существует, не выводим ошибку, просто создаем новый с результатами
 		if errors.Is(err, os.ErrNotExist) {
 			fmt.Println("Файл не найден, будет создан новый.")
 		} else {
@@ -184,20 +198,22 @@ func SaveResult(result GameResult) error {
 		}
 	}
 
-	// Если файл существует, пытаемся распарсить его
 	if len(data) > 0 {
 		if err := json.Unmarshal(data, &results); err != nil {
 			return fmt.Errorf("ошибка при чтении JSON: %w", err)
 		}
 	}
 
-	// Добавляем новый результат
 	results = append(results, result)
 
-	// Сохраняем обратно
 	newData, err := json.MarshalIndent(results, "", "  ")
 	if err != nil {
 		return fmt.Errorf("ошибка при маршалинге: %w", err)
+	}
+
+	// Создаем директорию storage, если её нет (на всякий случай)
+	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+		return fmt.Errorf("не удалось создать директорию storage: %w", err)
 	}
 
 	if err := os.WriteFile(filePath, newData, 0644); err != nil {
